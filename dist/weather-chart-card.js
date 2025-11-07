@@ -934,7 +934,7 @@ class WeatherChartCardEditor extends s {
       this.hass.states[config.entity].attributes &&
       this.hass.states[config.entity].attributes.description !== undefined
     ) || config.description !== undefined;
-    this.fetchEntities();	  
+    this.fetchEntities();
     this.requestUpdate();
   }
 
@@ -1140,17 +1140,17 @@ class WeatherChartCardEditor extends s {
       </style>
       <div>
       <div class="textfield-container">
-<ha-select
-  naturalMenuWidth
-  fixedMenuPosition
-  label="Entity"
-  .configValue=${'entity'}
-  .value=${this._entity}
-  @change=${(e) => this._EntityChanged(e, 'entity')}
-  @closed=${(ev) => ev.stopPropagation()}
->
-  ${this.entities.map((entity) => x`<ha-list-item .value=${entity}>${entity}</ha-list-item>`)}
-</ha-select>
+      <ha-select
+        naturalMenuWidth
+        fixedMenuPosition
+        label="Entity"
+        .configValue=${'entity'}
+        .value=${this._entity}
+        @change=${(e) => this._EntityChanged(e, 'entity')}
+        @closed=${(ev) => ev.stopPropagation()}
+      >
+        ${this.entities.map((entity) => x`<ha-list-item .value=${entity}>${entity}</ha-list-item>`)}
+      </ha-select>
       <ha-textfield
         label="Title"
         .value="${this._config.title || ''}"
@@ -17855,6 +17855,7 @@ static getStubConfig(hass, unusedEntities, allEntities) {
       forecastChart: {type: Object},
       forecastItems: {type: Number},
       forecasts: { type: Array }
+      //columnMinWidth: {type: Number}
     };
   }
 
@@ -17904,6 +17905,10 @@ setConfig(config) {
     'https://cdn.jsdelivr.net/gh/mlamberts78/weather-chart-card/dist/icons/' ;
 
   this.config = cardConfig;
+
+  let fontSize = this.config.forecast.labels_font_size;
+  this.columnMinWidth = Math.max(fontSize * 5, 48); // 48 allows space for wind speed
+
   if (!config.entity) {
     throw new Error('Please, define entity in the card config');
   }
@@ -18018,15 +18023,18 @@ subscribeForecastEvents() {
   }
 
 measureCard() {
-  const card = this.shadowRoot.querySelector('ha-card');
-  let fontSize = this.config.forecast.labels_font_size;
+  const card = this.shadowRoot.querySelector('ha-card .card');
   const numberOfForecasts = this.config.forecast.number_of_forecasts || 0;
 
   if (!card) {
     return;
   }
 
-  this.forecastItems = numberOfForecasts > 0 ? numberOfForecasts : Math.round(card.offsetWidth / (fontSize * 6));
+  const cardStyle = window.getComputedStyle(card);
+  const cardWidth = card.offsetWidth - parseFloat(cardStyle.paddingLeft) - parseFloat(cardStyle.paddingRight);
+  // I forget where the magic "- 10" on cardWidth came from -- probably margin on .conditions or .wind-details
+  this.forecastItems = numberOfForecasts > 0 ? numberOfForecasts : Math.floor((cardWidth - 10) / this.columnMinWidth);
+
   this.drawChart();
 }
 
@@ -18232,6 +18240,14 @@ drawChart({ config, language, weather, forecastItems } = this) {
   if (!this.forecasts || !this.forecasts.length) {
     return [];
   }
+
+  // set min-width to force scrolling if too many columns
+  const chartContainer = this.shadowRoot && this.shadowRoot.querySelector('div.chart-container');
+  if (!chartContainer) {
+      return
+  }
+  const totalMinWidth = Math.min(this.forecastItems, this.forecasts.length) * this.columnMinWidth;
+  chartContainer.style['min-width'] = totalMinWidth + 'px';
 
   const chartCanvas = this.renderRoot && this.renderRoot.querySelector('#forecastChart');
   if (!chartCanvas) {
@@ -18652,6 +18668,10 @@ updateChart({ forecasts, forecastChart } = this) {
       	  font-weight: 300;
           direction: ltr;
         }
+        .scroll-content {
+            overflow-x: auto;
+            scrollbar-width: thin;
+        }
         .chart-container {
           position: relative;
           height: ${config.forecast.chart_height}px;
@@ -18662,7 +18682,7 @@ updateChart({ forecasts, forecastChart } = this) {
           display: flex;
           justify-content: space-around;
           align-items: center;
-          margin: 0px 5px 0px 5px;
+          margin: 0px 5px 5px 5px;
       	  cursor: pointer;
         }
         .forecast-item {
@@ -18676,24 +18696,25 @@ updateChart({ forecasts, forecastChart } = this) {
           justify-content: space-around;
           align-items: center;
           font-weight: 300;
+          margin: -5px 5px 0px 5px;
         }
         .wind-detail {
-          display: flex;
-          align-items: center;
-          margin: 1px;
+          display: block;
+          width: 46px; /*note: slightly smaller than 48px in columnMinWidth to allow room for margin*/
+          margin: 3px 1px 1px;
         }
         .wind-detail ha-icon {
           --mdc-icon-size: 15px;
-          margin-right: 1px;
-          margin-inline-start: initial;
-          margin-inline-end: 1px;
         }
         .wind-icon {
-          margin-right: 1px;
-          margin-inline-start: initial;
-          margin-inline-end: 1px;
-          position: relative;
-	        bottom: 1px;
+          display: block;
+          width: fit-content;
+          margin: 0 auto;
+          line-height: 1;
+        }
+        .wind-speed-wrap {
+          width: fit-content;
+          margin: -0.4em auto 0;
         }
         .wind-speed {
           font-size: 11px;
@@ -18742,11 +18763,13 @@ updateChart({ forecasts, forecastChart } = this) {
         <div class="card">
           ${this.renderMain()}
           ${this.renderAttributes()}
-          <div class="chart-container">
-            <canvas id="forecastChart"></canvas>
+          <div class="scroll-content">
+            <div class="chart-container">
+              <canvas id="forecastChart"></canvas>
+            </div>
+            ${this.renderForecastConditionIcons()}
+            ${this.renderWind()}
           </div>
-          ${this.renderForecastConditionIcons()}
-          ${this.renderWind()}
           ${this.renderLastUpdated()}
         </div>
       </ha-card>
@@ -19003,8 +19026,11 @@ renderForecastConditionIcons({ config, forecastItems, sun } = this) {
     return x``;
   }
 
+  const totalMinWidth = forecast.length * this.columnMinWidth;
+
+  // I forget where the magic "- 10" on totalMinWidth came from -- probably margin on .conditions or .wind-details
   return x`
-    <div class="conditions" @click="${(e) => this.showMoreInfo(config.entity)}">
+    <div class="conditions" style="min-width: ${totalMinWidth - 10 + 'px'}" @click="${(e) => this.showMoreInfo(config.entity)}">
       ${forecast.map((item) => {
         const forecastTime = new Date(item.datetime);
         const sunriseTime = new Date(sun.attributes.next_rising);
@@ -19063,9 +19089,11 @@ renderWind({ config, weather, windSpeed, windDirection, forecastItems } = this) 
   }
 
   const forecast = this.forecasts ? this.forecasts.slice(0, forecastItems) : [];
+  const totalMinWidth = forecast.length * this.columnMinWidth;
 
+  // I forget where the magic "- 10" on totalMinWidth came from -- probably margin on .conditions or .wind-details
   return x`
-    <div class="wind-details">
+    <div class="wind-details" style="min-width: ${totalMinWidth - 10 + 'px'}">
       ${showWindForecast ? x`
         ${forecast.map((item) => {
           let dWindSpeed = item.wind_speed;
@@ -19099,8 +19127,9 @@ renderWind({ config, weather, windSpeed, windDirection, forecastItems } = this) 
           return x`
             <div class="wind-detail">
               <ha-icon class="wind-icon" icon="hass:${this.getWindDirIcon(item.wind_bearing)}"></ha-icon>
-              <span class="wind-speed">${dWindSpeed}</span>
-              <span class="wind-unit">${this.ll('units')[this.unitSpeed]}</span>
+              <div class="wind-speed-wrap">
+                <span class="wind-speed">${dWindSpeed}</span><span class="wind-unit">${this.ll('units')[this.unitSpeed]}</span>
+              </div>
             </div>
           `;
         })}
