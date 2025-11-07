@@ -79,7 +79,7 @@ static getStubConfig(hass, unusedEntities, allEntities) {
       windDirection: {type: Number},
       forecastChart: {type: Object},
       forecastItems: {type: Number},
-      forecasts: { type: Array }
+      forecasts: { type: Array } // Note: mutating array won't update element
       //columnMinWidth: {type: Number}
     };
   }
@@ -189,8 +189,6 @@ subscribeForecastEvents() {
 
   const callback = (event) => {
     this.forecasts = event.forecast;
-    this.requestUpdate();
-    this.drawChart();
   };
 
   this.forecastSubscriber = this._hass.connection.subscribeMessage(callback, {
@@ -235,6 +233,9 @@ subscribeForecastEvents() {
   attachResizeObserver() {
     this.resizeObserver = new ResizeObserver(() => {
       this.measureCard();
+      // Presumably drawChart ensures the chart is re-created matching the new
+      // canvas size??
+      this.drawChart();
     });
     const card = this.shadowRoot.querySelector('ha-card');
     if (card) {
@@ -261,8 +262,6 @@ measureCard() {
   const cardWidth = card.offsetWidth - parseFloat(cardStyle.paddingLeft) - parseFloat(cardStyle.paddingRight);
   // I forget where the magic "- 10" on cardWidth came from -- probably margin on .conditions or .wind-details
   this.forecastItems = numberOfForecasts > 0 ? numberOfForecasts : Math.floor((cardWidth - 10) / this.columnMinWidth);
-
-  this.drawChart();
 }
 
 ll(str) {
@@ -388,7 +387,6 @@ calculateBeaufortScale(windSpeed) {
 async firstUpdated(changedProperties) {
   super.firstUpdated(changedProperties);
   this.measureCard();
-  await new Promise(resolve => setTimeout(resolve, 0));
   this.drawChart();
 
   if (this.config.autoscroll) {
@@ -397,8 +395,39 @@ async firstUpdated(changedProperties) {
 }
 
 
+async update(changedProperties) {
+  // Apply autoscroll here to ensure it gets the same results everywhere.
+  if (this.config.autoscroll) {
+    const cutoff = new Date() - ((this.config.forecast.type === 'hourly' ? 1 : 24) * 60 * 60 * 1000);
+    function isTooOld(forecast) {
+      return new Date(forecast.datetime) <= cutoff;
+    }
+
+    // Only do anything if forecasts exist and the first forecast is too old.
+    if (this.forecasts && this.forecasts.length && isTooOld(this.forecasts[0])) {
+      // changedProperties is expected to contain the old value, before any
+      // changes.
+      // If forecasts is already present there, we have nothing to preserve and
+      // can freely modify the current array in this.forecasts.
+      // Otherwise, set the 'forecasts' key, then create a copy to work on (so
+      // we don't modify the original array that we're trying to keep).
+      if (!changedProperties.has('forecasts')) {
+        changedProperties.set('forecasts', this.forecasts);
+        this.forecasts = this.forecasts.slice();
+      }
+
+      // Remove all forecasts that are too old from start of array.
+      while (this.forecasts.length && isTooOld(this.forecasts[0])) {
+        this.forecasts.shift();
+      }
+    }
+  }
+
+  super.update(changedProperties);
+}
+
 async updated(changedProperties) {
-  await this.updateComplete;
+  // await this.updateComplete;
 
   if (changedProperties.has('config')) {
     const oldConfig = changedProperties.get('config');
@@ -415,9 +444,8 @@ async updated(changedProperties) {
       this.subscribeForecastEvents();
     }
 
-    if (this.forecasts && this.forecasts.length) {
-      this.drawChart();
-    }
+    // Config change may affect chart presentation, so redraw from scratch
+    this.drawChart();
 
     if (autoscrollChanged) {
       if (!this.config.autoscroll) {
@@ -428,7 +456,7 @@ async updated(changedProperties) {
     }
   }
 
-  if (changedProperties.has('weather')) {
+  if (changedProperties.has('forecasts')) {
     this.updateChart();
   }
 }
@@ -449,8 +477,7 @@ autoscroll() {
     );
     this.autoscrollTimeout = setTimeout(() => {
       this.autoscrollTimeout = null;
-      this.updateChart();
-      drawChartOncePerHour();
+      this.requestUpdate();
     }, nextHour - now);
   };
 
@@ -463,6 +490,9 @@ cancelAutoscroll() {
   }
 }
 
+/**
+* Completely recreates the main chart (not anything else).
+*/
 drawChart({ config, language, weather, forecastItems } = this) {
   if (!this.forecasts || !this.forecasts.length) {
     return [];
@@ -775,12 +805,6 @@ computeForecastData({ config, forecastItems } = this) {
 
   for (var i = 0; i < forecast.length; i++) {
     var d = forecast[i];
-    if (config.autoscroll) {
-      const cutoff = (config.forecast.type === 'hourly' ? 1 : 24) * 60 * 60 * 1000;
-      if (new Date() - new Date(d.datetime) > cutoff) {
-        continue;
-      }
-    }
     dateTime.push(d.datetime);
     tempHigh.push(d.temperature);
     if (typeof d.templow !== 'undefined') {
@@ -809,6 +833,9 @@ computeForecastData({ config, forecastItems } = this) {
   }
 }
 
+/**
+* Updates the data of the main chart (not anything else).
+*/
 updateChart({ forecasts, forecastChart } = this) {
   if (!forecasts || !forecasts.length) {
     return [];
