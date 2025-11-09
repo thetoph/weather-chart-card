@@ -17846,7 +17846,7 @@ static getStubConfig(hass, unusedEntities, allEntities) {
 
   static get properties() {
     return {
-      _hass: {},
+      //_hass: {}, // Removed bc no need to render every time *anything* changes
       config: {},
       language: {},
       sun: {type: Object},
@@ -17854,8 +17854,14 @@ static getStubConfig(hass, unusedEntities, allEntities) {
       temperature: {type: Object},
       humidity: {type: Object},
       pressure: {type: Object},
+      uv_index: {type: Object},
       windSpeed: {type: Object},
+      dew_point: {type: Object},
+      wind_gust_speed: {type: Object},
+      visibility: {type: Object},
       windDirection: {type: Number},
+      feels_like: {type: Object},
+      description: {type: Object},
       forecastChart: {type: Object},
       forecastItems: {type: Number},
       forecasts: { type: Array } // Note: mutating array won't update element
