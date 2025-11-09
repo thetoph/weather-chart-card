@@ -1183,7 +1183,7 @@ renderMain({ config, sun, weather, temperature, temperature_unit, feels_like, fe
       <div>
         <div>
           ${showTemperature ? html`${roundedTemperature}<span>${temperature_unit}</span>` : ''}
-          ${showFeelsLike && roundedFeelsLike ? html`
+          ${showFeelsLike && !isNaN(roundedFeelsLike) ? html`
             <div class="feels-like">
               ${this.ll('feelsLike')}
               ${roundedFeelsLike}${feels_like_unit}
