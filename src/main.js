@@ -323,6 +323,11 @@ subscribeForecastEvents() {
     if (this.forecastSubscriber) {
       this.forecastSubscriber.then((unsub) => unsub());
     }
+    if (this._updateClockInterval !== undefined) {
+      clearInterval(this._updateClockInterval);
+      this._updateClockInterval = undefined;
+    }
+    this.cancelAutoscroll();
   }
 
   attachResizeObserver() {
@@ -508,6 +513,13 @@ async firstUpdated(changedProperties) {
   if (this.config.autoscroll) {
     this.autoscroll();
   }
+
+  if (this.config.show_time) {
+    this._updateClock();
+    if (this._updateClockInterval === undefined) {
+      this._updateClockInterval = setInterval(this._updateClock.bind(this), 1000);
+    }
+  }
 }
 
 
@@ -551,6 +563,7 @@ async updated(changedProperties) {
     const entityChanged = oldConfig && this.config.entity !== oldConfig.entity;
     const forecastTypeChanged = oldConfig && this.config.forecast.type !== oldConfig.forecast.type;
     const autoscrollChanged = oldConfig && this.config.autoscroll !== oldConfig.autoscroll;
+    const showTimeChanged = oldConfig && this.config.show_time !== oldConfig.show_time;
 
     if (entityChanged || forecastTypeChanged) {
       if (this.forecastSubscriber && typeof this.forecastSubscriber === 'function') {
@@ -568,6 +581,20 @@ async updated(changedProperties) {
         this.autoscroll();
       } else {
         this.cancelAutoscroll();
+      }
+    }
+
+    if (showTimeChanged) {
+      if (this.config.show_time) {
+        this._updateClock();
+        if (this._updateClockInterval === undefined) {
+          this._updateClockInterval = setInterval(this._updateClock.bind(this), 1000);
+        }
+      } else {
+        if (this._updateClockInterval !== undefined) {
+          clearInterval(this._updateClockInterval);
+          this._updateClockInterval = undefined;
+        }
       }
     }
   }
@@ -1152,11 +1179,43 @@ updateChart({ forecasts, forecastChart } = this) {
     `;
   }
 
+_updateClock({ config } = this) {
+  const currentDate = new Date();
+  const timeOptions = {
+    hour12: config.use_12hour_format,
+    hour: 'numeric',
+    minute: 'numeric',
+    second: config.show_time_seconds ? 'numeric' : undefined
+  };
+  const currentTime = currentDate.toLocaleTimeString(this.language, timeOptions);
+  const currentDayOfWeek = currentDate.toLocaleString(this.language, { weekday: 'long' }).toUpperCase();
+  const currentDateFormatted = currentDate.toLocaleDateString(this.language, { month: 'long', day: 'numeric' });
+
+  const mainDiv = this.shadowRoot.querySelector('.main');
+  if (mainDiv) {
+    const clockElement = mainDiv.querySelector('#digital-clock');
+    if (clockElement) {
+      clockElement.textContent = currentTime;
+    }
+    if (config.show_day) {
+      const dayElement = mainDiv.querySelector('.date-text.day');
+      if (dayElement) {
+        dayElement.textContent = currentDayOfWeek;
+      }
+    }
+    if (config.show_date) {
+      const dateElement = mainDiv.querySelector('.date-text.date');
+      if (dateElement) {
+        dateElement.textContent = currentDateFormatted;
+      }
+    }
+  }
+}
+
 renderMain({ config, sun, weather, temperature, temperature_unit, feels_like, feels_like_unit, description } = this) {
   if (config.show_main === false)
     return html``;
 
-  const use12HourFormat = config.use_12hour_format;
   const showTime = config.show_time;
   const showDay = config.show_day;
   const showDate = config.show_date;
@@ -1164,7 +1223,6 @@ renderMain({ config, sun, weather, temperature, temperature_unit, feels_like, fe
   const showDescription = config.show_description;
   const showCurrentCondition = config.show_current_condition !== false;
   const showTemperature = config.show_temperature !== false;
-  const showSeconds = config.show_time_seconds === true;
 
   let roundedTemperature = parseFloat(temperature);
   if (!isNaN(roundedTemperature) && roundedTemperature % 1 !== 0) {
@@ -1179,45 +1237,6 @@ renderMain({ config, sun, weather, temperature, temperature_unit, feels_like, fe
   const iconHtml = config.animated_icons || config.icons
     ? html`<img src="${this.getWeatherIcon(weather.state, sun.state)}" alt="">`
     : html`<ha-icon icon="${this.getWeatherIcon(weather.state, sun.state)}"></ha-icon>`;
-
-  const updateClock = () => {
-    const currentDate = new Date();
-    const timeOptions = {
-      hour12: use12HourFormat,
-      hour: 'numeric',
-      minute: 'numeric',
-      second: showSeconds ? 'numeric' : undefined
-    };
-    const currentTime = currentDate.toLocaleTimeString(this.language, timeOptions);
-    const currentDayOfWeek = currentDate.toLocaleString(this.language, { weekday: 'long' }).toUpperCase();
-    const currentDateFormatted = currentDate.toLocaleDateString(this.language, { month: 'long', day: 'numeric' });
-
-    const mainDiv = this.shadowRoot.querySelector('.main');
-    if (mainDiv) {
-      const clockElement = mainDiv.querySelector('#digital-clock');
-      if (clockElement) {
-        clockElement.textContent = currentTime;
-      }
-      if (showDay) {
-        const dayElement = mainDiv.querySelector('.date-text.day');
-        if (dayElement) {
-          dayElement.textContent = currentDayOfWeek;
-        }
-      }
-      if (showDate) {
-        const dateElement = mainDiv.querySelector('.date-text.date');
-        if (dateElement) {
-          dateElement.textContent = currentDateFormatted;
-        }
-      }
-    }
-  };
-
-  updateClock();
-
-  if (showTime) {
-    setInterval(updateClock, 1000);
-  }
 
   return html`
     <div class="main">
@@ -1353,12 +1372,12 @@ renderSun({ sun, language, config } = this) {
     return html``;
   }
 
-const use12HourFormat = this.config.use_12hour_format;
-const timeOptions = {
-    hour12: use12HourFormat,
-    hour: 'numeric',
-    minute: 'numeric'
-};
+  const use12HourFormat = this.config.use_12hour_format;
+  const timeOptions = {
+      hour12: use12HourFormat,
+      hour: 'numeric',
+      minute: 'numeric'
+  };
 
   return html`
     <ha-icon icon="mdi:weather-sunset-up"></ha-icon>
