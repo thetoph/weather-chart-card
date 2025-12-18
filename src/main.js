@@ -713,12 +713,12 @@ drawChart({ config, language, weather, forecastItems } = this) {
         if (config.forecast.precipitation_type === 'rainfall') {
           let unit = config.forecast.show_precip_unit ? ' ' + precipUnit : '';
           if (probability !== undefined && probability !== null && config.forecast.show_probability) {
-            formattedValue = `${rainfall > 9 ? Math.round(rainfall) : rainfall.toFixed(1)}${unit}\n${Math.round(probability)}%`;
+            formattedValue = `${rainfall > 9 ? Math.round(rainfall) : rainfall.toFixed(2)}${unit}\n${Math.round(probability)}%`;
           } else {
-            formattedValue = `${rainfall > 9 ? Math.round(rainfall) : rainfall.toFixed(1)}${unit}`;
+            formattedValue = `${rainfall > 9 ? Math.round(rainfall) : rainfall.toFixed(2)}${unit}`;
           }
         } else {
-          formattedValue = `${rainfall > 9 ? Math.round(rainfall) : rainfall.toFixed(1)}%`;
+          formattedValue = `${rainfall > 9 ? Math.round(rainfall) : rainfall.toFixed(2)}%`;
         }
 
         formattedValue = formattedValue.replace('\n', '\n\n');
