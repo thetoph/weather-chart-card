@@ -151,7 +151,7 @@ setConfig(config) {
 
     let minWidthForIconAndWind;
     if (cardConfig.forecast.show_wind_forecast && cardConfig.forecast.show_wind_unit) {
-      minWidthForIconAndWind = 48;
+      minWidthForIconAndWind = 58;
     } else {
       minWidthForIconAndWind = 26;
     }
@@ -1100,7 +1100,7 @@ updateChart({ forecasts, forecastChart } = this) {
         }
         .wind-detail {
           display: block;
-          width: 46px; /*note: slightly smaller than 48px in columnMinWidth to allow room for margin*/
+          width: 56px; /*note: slightly smaller than 48px in columnMinWidth to allow room for margin*/
           margin: 3px 1px 1px;
         }
         .wind-detail ha-icon {
@@ -1457,26 +1457,32 @@ renderWind({ config, weather, windDirection, forecastItems } = this) {
     return html``;
   }
 
-  // Note: use weather attributes because forecast is always from weather, not
-  // a custom sensor entity.
   const wind_speed_unit = weather.attributes.wind_speed_unit;
-
   const forecast = this.forecasts ? this.forecasts.slice(0, forecastItems) : [];
   const totalMinWidth = forecast.length * this.columnMinWidth;
 
-  // I forget where the magic "- 10" on totalMinWidth came from -- probably margin on .conditions or .wind-details
   return html`
     <div class="wind-details" style="min-width: ${totalMinWidth - 10 + 'px'}">
       ${showWindForecast ? html`
         ${forecast.map((item) => {
+          // --- SUSTAINED WIND LOGIC ---
           let dWindSpeed = this.convertSpeed(item.wind_speed, wind_speed_unit, this.unitSpeed);
           dWindSpeed = Math.round(dWindSpeed);
+
+          // --- NEW GUST LOGIC START ---
+          let gustHtml = '';
+          if (item.wind_gust_speed !== undefined) {
+            let dWindGust = this.convertSpeed(item.wind_gust_speed, wind_speed_unit, this.unitSpeed);
+            // Formats the gust as (X) with smaller, faded text
+            gustHtml = html`<span style="font-size: 0.8em; opacity: 0.7;"> (${Math.round(dWindGust)})</span>`;
+          }
+          // --- NEW GUST LOGIC END ---
 
           return html`
             <div class="wind-detail">
               <ha-icon class="wind-icon" icon="hass:${this.getWindDirIcon(item.wind_bearing)}"></ha-icon>
               <div class="wind-speed-wrap">
-                <span class="wind-speed">${dWindSpeed}</span>${showWindUnit ?
+                <span class="wind-speed">${dWindSpeed}${gustHtml}</span>${showWindUnit ?
                 html`<span class="wind-unit">${this.ll('units')[this.unitSpeed]}</span>` : ''}
               </div>
             </div>
