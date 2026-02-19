@@ -19471,9 +19471,7 @@ renderWind({ config, weather, windDirection, forecastItems } = this) {
   const showWindForecast = config.forecast.show_wind_forecast !== false;
   const showWindUnit = config.forecast.show_wind_unit;
 
-  if (!showWindForecast) {
-    return x``;
-  }
+  if (!showWindForecast) return x``;
 
   const wind_speed_unit = weather.attributes.wind_speed_unit;
   const forecast = this.forecasts ? this.forecasts.slice(0, forecastItems) : [];
@@ -19481,32 +19479,36 @@ renderWind({ config, weather, windDirection, forecastItems } = this) {
 
   return x`
     <div class="wind-details" style="min-width: ${totalMinWidth - 10 + 'px'}">
-      ${showWindForecast ? x`
-        ${forecast.map((item) => {
-          // --- SUSTAINED WIND LOGIC ---
-          let dWindSpeed = this.convertSpeed(item.wind_speed, wind_speed_unit, this.unitSpeed);
-          dWindSpeed = Math.round(dWindSpeed);
+      ${forecast.map((item) => {
+        const dWindSpeed = Math.round(this.convertSpeed(item.wind_speed, wind_speed_unit, this.unitSpeed));
+        const dWindGust = Math.round(this.convertSpeed(item.wind_gust_speed || item.wind_speed, wind_speed_unit, this.unitSpeed));
+        
+        // --- HYBRID LOGIC ---
+        const spread = dWindGust - dWindSpeed;
+        
+        // Define your "Importance" thresholds (adjust these numbers to your liking)
+        // Orange if gust is 10+ over sustained, Red if 20+
+        let gustColor = 'var(--primary-text-color)';
+        if (spread >= 20) gustColor = '#ff4444'; 
+        else if (spread >= 10) gustColor = '#ff9800';
 
-          // --- NEW GUST LOGIC START ---
-          let gustHtml = '';
-          if (item.wind_gust_speed !== undefined) {
-            let dWindGust = this.convertSpeed(item.wind_gust_speed, wind_speed_unit, this.unitSpeed);
-            // Formats the gust as (X) with smaller, faded text
-            gustHtml = x`<span style="font-size: 0.8em; opacity: 0.7;"> (${Math.round(dWindGust)})</span>`;
-          }
-          // --- NEW GUST LOGIC END ---
-
-          return x`
-            <div class="wind-detail">
-              <ha-icon class="wind-icon" icon="hass:${this.getWindDirIcon(item.wind_bearing)}"></ha-icon>
-              <div class="wind-speed-wrap">
-                <span class="wind-speed">${dWindSpeed}${gustHtml}</span>${showWindUnit ?
-                x`<span class="wind-unit">${this.ll('units')[this.unitSpeed]}</span>` : ''}
-              </div>
+        return x`
+          <div class="wind-detail">
+            <ha-icon class="wind-icon" 
+                     icon="hass:${this.getWindDirIcon(item.wind_bearing)}" 
+                     style="color: ${spread >= 10 ? gustColor : 'inherit'}; opacity: ${spread >= 10 ? 1 : 0.7};">
+            </ha-icon>
+            <div class="wind-speed-wrap" style="white-space: nowrap;">
+              <span style="font-size: 9px; opacity: 0.6;">${dWindSpeed}</span>
+              <span style="font-size: 9px; opacity: 0.4;">-</span>
+              <span style="font-size: 11px; font-weight: bold; color: ${gustColor};">
+                ${dWindGust}
+              </span>
+              ${showWindUnit ? x`<span class="wind-unit" style="margin-left: 1px;">${this.ll('units')[this.unitSpeed]}</span>` : ''}
             </div>
-          `;
-        })}
-      ` : ''}
+          </div>
+        `;
+      })}
     </div>
   `;
 }
